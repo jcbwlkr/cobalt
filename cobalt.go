@@ -89,8 +89,8 @@ func (c *Cobalt) AddPostfilter(h Handler) {
 	c.postfilters = append(c.postfilters, h)
 }
 
-// AddServerErrHanlder add handler for server err.
-func (c *Cobalt) AddServerErrHanlder(h Handler) {
+// AddServerErrHandler add handler for server err.
+func (c *Cobalt) AddServerErrHandler(h Handler) {
 	c.serverError = h
 }
 
@@ -179,6 +179,7 @@ func (c *Cobalt) addroute(method, route string, h Handler, filters []FilterHandl
 
 		log.Printf("%s =>  %s %s - %s", ctx.ID, req.Method, req.RequestURI, req.RemoteAddr)
 
+		// here start group.
 		// global filters.
 		for _, pf := range c.prefilters {
 			if keepGoing := pf(ctx); !keepGoing {
@@ -195,6 +196,8 @@ func (c *Cobalt) addroute(method, route string, h Handler, filters []FilterHandl
 		}
 
 		// call route handler
+		// todo: handle errors here
+		// change handlers to return errors.
 		h(ctx)
 
 		// handle any post handler filters
@@ -204,4 +207,136 @@ func (c *Cobalt) addroute(method, route string, h Handler, filters []FilterHandl
 	}
 
 	c.router.Handle(method, route, f)
+}
+
+// AddGroup adds a group of routes the router.
+func (c *Cobalt) AddGroup(g *Group) {
+
+	for _, route := range g.routes {
+		f := func(w http.ResponseWriter, req *http.Request, p map[string]string) {
+			ctx := NewContext(req, w, p, c.coder)
+
+			// Handle panics
+			defer func() {
+				if r := recover(); r != nil {
+					log.Printf("cobalt: Panic Error => %v\n", r)
+					log.Printf("cobalt: Panic, Recovering\n")
+					buf := make([]byte, 10000)
+					runtime.Stack(buf, false)
+					log.Printf("%s\n", string(buf))
+					if c.serverError != nil {
+						log.Printf("cobalt: Panic, Recovering")
+						c.serverError(ctx)
+						return
+					}
+				}
+				log.Printf("%s => complete: %d %s %s - %s\n", ctx.ID, ctx.status, req.Method, req.RequestURI, req.RemoteAddr)
+			}()
+
+			log.Printf("%s =>  %s %s - %s", ctx.ID, req.Method, req.RequestURI, req.RemoteAddr)
+
+			// global cobalt filters.
+			for _, pf := range c.prefilters {
+				if keepGoing := pf(ctx); !keepGoing {
+					return
+				}
+			}
+
+			// Global Group Filters
+			for _, f := range g.prefilters {
+				keepGoing := f(ctx)
+				if !keepGoing {
+					return
+				}
+			}
+
+			// groupe route specific filters.
+			for _, f := range route.filters {
+				keepGoing := f(ctx)
+				if !keepGoing {
+					return
+				}
+			}
+
+			// call route handler
+			// todo: handle errors here
+			// change handlers to return errors.
+			route.h(ctx)
+
+			// handle any group post handler filters
+			for _, f := range g.postfilters {
+				f(ctx)
+			}
+
+			// handle any post handler filters
+			for _, f := range c.postfilters {
+				f(ctx)
+			}
+		}
+
+		c.router.Handle(route.verb, route.path, f)
+	}
+}
+
+type (
+	// Group represents a group of routes that have pre and post handlers.
+	// Each route can also have route filters.
+	Group struct {
+		prefilters  []FilterHandler
+		postfilters []Handler
+		routes      []route
+	}
+
+	route struct {
+		path    string
+		verb    string
+		h       Handler
+		filters []FilterHandler
+	}
+)
+
+// AddPrefilter adds a prefilter hanlder to a dispatcher instance.
+func (g *Group) AddPrefilter(h FilterHandler) {
+	g.prefilters = append(g.prefilters, h)
+}
+
+// AddPostfilter adds a post processing handler to a diaptcher instance.
+func (g *Group) AddPostfilter(h Handler) {
+	g.postfilters = append(g.postfilters, h)
+}
+
+// Get adds a route with an associated handler that matches a GET verb in a request.
+func (g *Group) Get(routePath string, h Handler, f ...FilterHandler) {
+	g.addRoute(GetMethod, routePath, h, f...)
+}
+
+// Post adds a route with an associated handler that matches a POST verb in a request.
+func (g *Group) Post(routePath string, h Handler, f ...FilterHandler) {
+	g.addRoute(PostMethod, routePath, h, f...)
+}
+
+// Put adds a route with an associated handler that matches a PUT verb in a request.
+func (g *Group) Put(routePath string, h Handler, f ...FilterHandler) {
+	g.addRoute(PutMethod, routePath, h, f...)
+}
+
+// Delete adds a route with an associated handler that matches a DELETE verb in a request.
+func (g *Group) Delete(routePath string, h Handler, f ...FilterHandler) {
+	g.addRoute(DeleteMethod, routePath, h, f...)
+}
+
+// Options adds a route with an associated handler that matches a OPTIONS verb in a request.
+func (g *Group) Options(routePath string, h Handler, f ...FilterHandler) {
+	g.addRoute(OptionsMethod, routePath, h, f...)
+}
+
+// Head adds a route with an associated handler that matches a HEAD verb in a request.
+func (g *Group) Head(routePath string, h Handler, f ...FilterHandler) {
+	g.addRoute(HeadMethod, routePath, h, f...)
+}
+
+// addRoute adds a route to a group.
+func (g *Group) addRoute(verb string, routePath string, h Handler, f ...FilterHandler) {
+	r := route{path: routePath, verb: verb, h: h, filters: f}
+	g.routes = append(g.routes, r)
 }
