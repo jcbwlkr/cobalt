@@ -53,6 +53,10 @@ type (
 		ContentType() string
 	}
 
+	Router interface {
+		AddRoute()
+	}
+
 	// Cobalt is the main data structure that holds all the filters, pointer to routes
 	Cobalt struct {
 		router      *httptreemux.TreeMux
@@ -242,7 +246,7 @@ func (c *Cobalt) AddGroup(g *Group) {
 				}
 			}
 
-			// Global Group Filters
+			// global group filters
 			for _, f := range g.prefilters {
 				keepGoing := f(ctx)
 				if !keepGoing {
@@ -259,7 +263,6 @@ func (c *Cobalt) AddGroup(g *Group) {
 			}
 
 			// call route handler
-			// todo: handle errors here
 			// change handlers to return errors.
 			route.h(ctx)
 
@@ -279,7 +282,7 @@ func (c *Cobalt) AddGroup(g *Group) {
 }
 
 type (
-	// Group represents a group of routes that have pre and post handlers.
+	// Group represents a group of routes that have pre and post filters.
 	// Each route can also have route filters.
 	Group struct {
 		prefilters  []FilterHandler
@@ -287,6 +290,7 @@ type (
 		routes      []route
 	}
 
+	// route represents a route in a group.
 	route struct {
 		path    string
 		verb    string

@@ -234,8 +234,11 @@ func AssertRoute(path, verb string, c *Cobalt, t *testing.T) {
 	}
 }
 
-func Test_PostFilters(t *testing.T) {
+func Test_GroupRoutes(t *testing.T) {
 
+}
+
+func Test_PostFilters(t *testing.T) {
 }
 
 func Test_NotFoundHandler(t *testing.T) {
